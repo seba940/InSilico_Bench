@@ -195,6 +195,8 @@ class SpeciesTab:
         for k, v in self.lib.species.items():
             if not q or q.upper() in k.upper(): self.tree.insert("", "end", values=(v.name, v.description))
 
+from core.providers import ProviderRegistry
+
 class AnnotationRefTab:
     def __init__(self, parent, lib, refresh_callback):
         self.parent, self.lib, self.refresh_cb = parent, lib, refresh_callback
@@ -207,25 +209,53 @@ class AnnotationRefTab:
         ttk.Button(in_f, text="?", width=3, command=self.show_help).pack(side="left", padx=5)
         
         self.search = UIHelper.add_search_bar(f, self.filter, lambda: None)
-        fr_t, self.tree = UIHelper.create_scrolled_tree(f, ("N", "F", "S"), ("Name", "Features", "Source"), lib=self.lib, table_id="ann_ref_main")
+        fr_t, self.tree = UIHelper.create_scrolled_tree(f, ("N", "F", "Sp", "S"), ("Name", "Features", "Species", "Source"), lib=self.lib, table_id="ann_ref_main")
         fr_t.pack(fill="both", expand=True)
-        ttk.Button(f, text="Delete", command=self.del_r).pack()
+
+        # Add Species/Provider edit area
+        edit_f = ttk.Frame(f, padding=5); edit_f.pack(fill="x")
+        ttk.Label(edit_f, text="Species:").pack(side="left")
+        self.sp_c = ttk.Combobox(edit_f, values=ProviderRegistry.list_species())
+        self.sp_c.pack(side="left", padx=5)
+        ttk.Button(edit_f, text="Update Selected Species", command=self.update_species).pack(side="left")
+
+        ttk.Button(f, text="Delete", command=self.del_r).pack(pady=5)
 
     def show_help(self): messagebox.showinfo("Help", "Use .gff3 or .gbk files. IDs must match FASTA sequence IDs.")
+    
     def load_file(self):
         p = filedialog.askopenfilename(filetypes=[("Annotation", "*.gff *.gff3 *.gbk *.gb")])
         if p:
             feats = parse_annotation_file(p); n = os.path.basename(p)
-            self.lib.ann_refs[n] = AnnotationRef(n, feats, p); self.lib.save(); self.refresh_cb()
+            # Default to Yeast if SGD mentioned, else Generic
+            species = "Saccharomyces cerevisiae" if "sgd" in p.lower() or "yeast" in p.lower() else "Generic"
+            provider_obj = ProviderRegistry.get_by_species(species)
+            self.lib.ann_refs[n] = AnnotationRef(n, feats, p, species, provider_obj.name)
+            self.lib.save(); self.refresh_cb()
+
+    def update_species(self):
+        sel = self.tree.selection()
+        if not sel: return
+        name = self.tree.item(sel[0])['values'][0]
+        if name in self.lib.ann_refs:
+            sp = self.sp_c.get()
+            self.lib.ann_refs[name].species = sp
+            self.lib.ann_refs[name].provider = ProviderRegistry.get_by_species(sp).name
+            self.lib.save()
+            self.refresh_cb()
 
     def del_r(self):
-        for s in self.tree.selection(): del self.lib.ann_refs[self.tree.item(s)['values'][0]]
+        for s in self.tree.selection(): 
+            val = self.tree.item(s)['values']
+            if val and val[0] in self.lib.ann_refs:
+                del self.lib.ann_refs[val[0]]
         self.lib.save(); self.refresh_cb()
 
     def filter(self, q):
         self.tree.delete(*self.tree.get_children())
         for k, v in self.lib.ann_refs.items():
-            if not q or q.upper() in k.upper(): self.tree.insert("", "end", values=(v.name, len(v.features), v.source_file))
+            if not q or q.upper() in k.upper(): 
+                self.tree.insert("", "end", values=(v.name, len(v.features), getattr(v, 'species', 'Generic'), v.source_file))
 
 class SeqViewTab:
     def __init__(self, parent, lib, refresh_callback, data_dict, category):

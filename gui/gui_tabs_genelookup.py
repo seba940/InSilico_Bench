@@ -1,12 +1,11 @@
-"""Gene Lookup tab - SGD/NCBI fetch"""
+"""Gene Lookup tab - Multi-species/Provider support"""
 import webbrowser
 import tkinter as tk
 from tkinter import ttk, messagebox
 from core.models import SequenceItem
 from gui.gui_components import UIHelper, SearchableCombobox, SnapGeneViewer
 from core.utils import get_rc
-
-SGD_LOCUS = "https://www.yeastgenome.org/locus/"
+from core.providers import ProviderRegistry
 
 class GeneLookupTab:
     def __init__(self, parent, lib, refresh_callback):
@@ -20,20 +19,32 @@ class GeneLookupTab:
     def setup_ui(self):
         f = ttk.Frame(self.parent, padding=10)
         f.pack(fill="both", expand=True)
-        sf = ttk.LabelFrame(f, text="Source", padding=8)
+
+        sf = ttk.LabelFrame(f, text="Source & Species", padding=8)
         sf.pack(fill="x")
+        
+        r_sp = ttk.Frame(sf); r_sp.pack(fill="x", pady=2)
+        ttk.Label(r_sp, text="Target Species:", width=18).pack(side="left")
+        self.sp_c = ttk.Combobox(r_sp, values=ProviderRegistry.list_species(), state="readonly")
+        self.sp_c.set("Saccharomyces cerevisiae")
+        self.sp_c.pack(side="left", fill="x", expand=True, padx=4)
+        self.sp_c.bind("<<ComboboxSelected>>", lambda e: self.on_species_change())
+
         r0 = ttk.Frame(sf); r0.pack(fill="x", pady=2)
         ttk.Label(r0, text="Genome template:", width=18).pack(side="left")
         self.gen_c = SearchableCombobox(r0)
         self.gen_c.pack(side="left", fill="x", expand=True, padx=4)
         self.gen_c.bind("<<ComboboxSelected>>", lambda e: self._update_status())
+        
         r1 = ttk.Frame(sf); r1.pack(fill="x", pady=2)
         ttk.Label(r1, text="Annotation reference:", width=18).pack(side="left")
         self.ann_c = SearchableCombobox(r1)
         self.ann_c.pack(side="left", fill="x", expand=True, padx=4)
-        self.ann_c.bind("<<ComboboxSelected>>", lambda e: self.refresh_results())
+        self.ann_c.bind("<<ComboboxSelected>>", lambda e: self.on_ann_change())
+        
         self.status_l = ttk.Label(sf, text="", font=("TkDefaultFont", 8, "italic"), foreground="gray")
         self.status_l.pack(anchor="w", pady=2)
+
         srch = ttk.LabelFrame(f, text="Search Gene", padding=8)
         srch.pack(fill="x", pady=4)
         rs = ttk.Frame(srch); rs.pack(fill="x")
@@ -41,12 +52,14 @@ class GeneLookupTab:
         self.q = ttk.Entry(rs)
         self.q.pack(side="left", fill="x", expand=True, padx=4)
         self.q.bind("<KeyRelease>", lambda e: self.refresh_results())
+        
         ttk.Label(rs, text="Type:").pack(side="left", padx=(8, 0))
         self.type_filter = ttk.Combobox(rs, state="readonly", width=10,
             values=["(all)","gene","CDS","tRNA","rRNA","ncRNA","snoRNA","telomere","centromere","ARS"])
         self.type_filter.set("gene")
         self.type_filter.pack(side="left", padx=4)
         self.type_filter.bind("<<ComboboxSelected>>", lambda e: self.refresh_results())
+
         ft, self.tree = UIHelper.create_scrolled_tree(f,
             ("name","sysname","type","chr","s","e","strand","len"),
             ("Name","Sysname","Type","Chr","Start","End","Strand","Length"))
@@ -55,7 +68,8 @@ class GeneLookupTab:
                        ("s",80),("e",80),("strand",60),("len",80)]:
             self.tree.column(col, width=w)
         self.tree.bind("<<TreeviewSelect>>", lambda e: self.on_select())
-        ff = ttk.LabelFrame(f, text="Extract with Flanking", padding=8)
+
+        ff = ttk.LabelFrame(f, text="Extract with Flanking (Local Sequence)", padding=8)
         ff.pack(fill="x", pady=4)
         rf = ttk.Frame(ff); rf.pack(fill="x")
         ttk.Label(rf, text="Upstream:").pack(side="left")
@@ -69,29 +83,52 @@ class GeneLookupTab:
         ttk.Label(rf, text="bp").pack(side="left")
         self.match_l = ttk.Label(rf, text="", font=("TkDefaultFont",9,"bold"), foreground="darkgreen")
         self.match_l.pack(side="right", padx=10)
+        
         self.det = SnapGeneViewer(ff, row_width=60)
         self.det.pack(fill="both", expand=True, pady=4)
-        sgd_f = ttk.LabelFrame(f, text="SGD Database", padding=8)
-        sgd_f.pack(fill="x", pady=4)
-        rs2 = ttk.Frame(sgd_f); rs2.pack(fill="x")
-        ttk.Button(rs2, text="Open in SGD", command=self.open_in_sgd).pack(side="left", padx=4)
-        ttk.Button(rs2, text="Open SGD Sequence Page", command=self.open_sgd_seq).pack(side="left", padx=4)
-        self.sgd_status = ttk.Label(rs2, text="", font=("TkDefaultFont",9), foreground="gray")
-        self.sgd_status.pack(side="left", padx=8)
+
+        self.db_f = ttk.LabelFrame(f, text="External Database", padding=8)
+        self.db_f.pack(fill="x", pady=4)
+        rs2 = ttk.Frame(self.db_f); rs2.pack(fill="x")
+        self.btn_locus = ttk.Button(rs2, text="Open in DB", command=lambda: self.open_external_db("locus"))
+        self.btn_locus.pack(side="left", padx=4)
+        self.btn_seq = ttk.Button(rs2, text="Open Sequence Page", command=lambda: self.open_external_db("seq"))
+        self.btn_seq.pack(side="left", padx=4)
+        self.db_status = ttk.Label(rs2, text="", font=("TkDefaultFont",9), foreground="gray")
+        self.db_status.pack(side="left", padx=8)
+
         sv = ttk.Frame(f); sv.pack(fill="x", pady=4)
         ttk.Label(sv, text="Save name:").pack(side="left")
         self.save_name = ttk.Entry(sv, width=40)
         self.save_name.pack(side="left", padx=4)
         ttk.Button(sv, text="Save as Template (Kind=Genome)",
                    command=self.save_as_template).pack(side="left", padx=4)
-        # legend is now embedded inside SnapGeneViewer toolbar
+
+        self.on_species_change()
 
     def refresh_sources(self):
         def _kind(v):
-            return v.kind or ("Genome" if v.topology == "Linear" else "Plasmid")
+            return getattr(v, 'kind', None) or ("Genome" if v.topology == "Linear" else "Plasmid")
         gens = [k for k,v in self.lib.templates.items() if _kind(v) == "Genome"]
         self.gen_c["values"] = sorted(gens)
         self.ann_c["values"] = sorted(list(self.lib.ann_refs.keys()))
+
+    def on_species_change(self):
+        sp = self.sp_c.get()
+        provider = ProviderRegistry.get_by_species(sp)
+        self.db_f.config(text=f"{provider.name} Database ({sp})")
+        self.btn_locus.config(text=f"Open in {provider.name}")
+        self.btn_seq.config(state="normal" if provider.get_sequence_url("test") else "disabled")
+
+    def on_ann_change(self):
+        ann_name = self.ann_c.get()
+        if ann_name in self.lib.ann_refs:
+            ann = self.lib.ann_refs[ann_name]
+            sp = getattr(ann, 'species', 'Generic')
+            if sp in ProviderRegistry.list_species():
+                self.sp_c.set(sp)
+                self.on_species_change()
+        self.refresh_results()
 
     def _update_status(self):
         gname = self.gen_c.get()
@@ -132,84 +169,65 @@ class GeneLookupTab:
                 feat.get("chr",""), feat.get("start",""), feat.get("end",""),
                 strand, length))
         count = len(self.matches)
-        if count > cap:
-            txt = "{} hits (showing first {})".format(count, cap)
-        else:
-            txt = "{} hit(s)".format(count)
+        txt = "{} hit(s)".format(count) if count <= cap else "{} hits (showing first {})".format(count, cap)
         self.match_l.config(text=txt, foreground="darkgreen")
 
     def on_select(self):
         sel = self.tree.selection()
-        if not sel:
-            return
+        if not sel: return
         try:
             i = int(sel[0])
-        except ValueError:
-            return
-        if i >= len(self.matches):
-            return
+        except ValueError: return
+        if i >= len(self.matches): return
+        
         feat = self.matches[i]
         gname = self.gen_c.get()
         if not gname or gname not in self.lib.templates:
             self.det.show_message("Genome template을 먼저 선택하세요.")
             return
+            
         gt = self.lib.templates[gname]
         gseq_up = gt.sequence.upper()
         gene_seq = (feat.get("sequence") or "").upper()
+        
         try:
-            up = max(0, int(self.up_sp.get()))
-            dn = max(0, int(self.dn_sp.get()))
-        except ValueError:
-            up, dn = 500, 500
+            up, dn = int(self.up_sp.get()), int(self.dn_sp.get())
+        except ValueError: up, dn = 500, 500
+        
         gene_start, gene_end, strand_in_genome = -1, -1, +1
         if gene_seq:
             idx = gseq_up.find(gene_seq)
-            if idx != -1:
-                gene_start, gene_end, strand_in_genome = idx, idx + len(gene_seq), +1
+            if idx != -1: gene_start, gene_end, strand_in_genome = idx, idx + len(gene_seq), +1
             else:
                 rc = get_rc(gene_seq).upper()
                 idx_rc = gseq_up.find(rc)
-                if idx_rc != -1:
-                    gene_start, gene_end, strand_in_genome = idx_rc, idx_rc + len(rc), -1
+                if idx_rc != -1: gene_start, gene_end, strand_in_genome = idx_rc, idx_rc + len(rc), -1
+        
         if gene_start == -1:
-            f_start = feat.get("start")
-            f_end = feat.get("end")
+            f_start, f_end = feat.get("start"), feat.get("end")
             if f_start is not None and f_end is not None and f_end > f_start:
-                gene_start = max(0, f_start)
-                gene_end = min(len(gt.sequence), f_end)
+                gene_start, gene_end = max(0, f_start), min(len(gt.sequence), f_end)
                 strand_in_genome = feat.get("strand", 1)
+                
         if gene_start == -1:
-            _msg = ("genome '{gn}' 에서 '{lb}' 을 찾지 못했습니다.\n"
-                   "GFF 좌표: {ch}:{s}..{e}\n"
-                   "다른 strain 이거나 해당 chromosome 을 포함하지 않음.").format(
-                       gn=gname, lb=feat.get("label"),
-                       ch=feat.get("chr"), s=feat.get("start"), e=feat.get("end"))
-            self.det.show_message(_msg)
-            self.match_l.config(text="not found in genome", foreground="red")
-            self.current_extract = None
+            self.det.show_message(f"Genome '{gname}'에서 '{feat.get('label')}'을 찾지 못했습니다.")
             return
-        ext_start = max(0, gene_start - up)
-        ext_end = min(len(gt.sequence), gene_end + dn)
+            
+        ext_start, ext_end = max(0, gene_start - up), min(len(gt.sequence), gene_end + dn)
         ext_seq = gt.sequence[ext_start:ext_end]
-        gls = gene_start - ext_start
-        gle = gene_end - ext_start
+        gls, gle = gene_start - ext_start, gene_end - ext_start
+        
         ft2 = feat.get("type","CDS")
-        if ft2 not in ("gene","CDS"):
-            ft2 = "CDS"
-        feats_local = [{"label": feat.get("label","gene"),
-                        "start": gls, "end": gle, "type": ft2,
-                        "strand": strand_in_genome}]
-        if up > 0:
-            feats_local.append({"label": "upstream_{}bp".format(up),
-                                 "start": 0, "end": gls, "type": "Misc", "strand": 1})
-        if dn > 0:
-            feats_local.append({"label": "downstream_{}bp".format(dn),
-                                 "start": gle, "end": len(ext_seq), "type": "Misc", "strand": 1})
+        if ft2 not in ("gene","CDS"): ft2 = "CDS"
+        
+        feats_local = [{"label": feat.get("label","gene"), "start": gls, "end": gle, "type": ft2, "strand": strand_in_genome}]
+        if up > 0: feats_local.append({"label": f"upstream_{up}bp", "start": 0, "end": gls, "type": "Misc", "strand": 1})
+        if dn > 0: feats_local.append({"label": f"downstream_{dn}bp", "start": gle, "end": len(ext_seq), "type": "Misc", "strand": 1})
+        
         UIHelper.render_annotations(self.det, ext_seq, feats_local, lib_manager=self.lib)
         ss = "+" if strand_in_genome == +1 else "-"
-        self.match_l.config(
-            text="matched {}..{} ({}), extract {} bp".format(gene_start, gene_end, ss, len(ext_seq)),
-            foreground="darkgreen")
+        self.match_l.config(text=f"matched {gene_start}..{gene_end} ({ss}), extract {len(ext_seq)} bp")
+        
         self.current_extract = {
             "name_default": "{}_{}up_{}dn".format(feat.get("label","gene"), up, dn),
             "sequence": ext_seq, "features": feats_local,
@@ -217,43 +235,33 @@ class GeneLookupTab:
         self.save_name.delete(0, tk.END)
         self.save_name.insert(0, self.current_extract["name_default"])
 
-    # -------- SGD 브라우저 열기 ----------------------------------------
-    def _get_sgd_identifier(self):
-        """선택된 유전자의 SGD 식별자 반환. 없으면 None."""
+    def open_external_db(self, mode="locus"):
+        ident = None
         sel = self.tree.selection()
-        if not sel:
-            messagebox.showwarning("Warning", "유전자를 먼저 선택하세요.")
-            return None
-        try:
-            i = int(sel[0])
-        except ValueError:
-            return None
-        if i >= len(self.matches):
-            return None
-        feat = self.matches[i]
-        attrs = feat.get("attrs", {}) or {}
-        # standard name(ACT1) 우선, 없으면 systematic(YFL039C)
-        ident = (attrs.get("gene") or feat.get("label","") or
-                 attrs.get("Name") or attrs.get("ID") or "").strip()
-        return ident or None
-
-    def open_in_sgd(self):
-        """선택된 유전자의 SGD locus 페이지를 기본 브라우저로 연다."""
-        ident = self._get_sgd_identifier()
+        if sel:
+            try:
+                i = int(sel[0])
+                feat = self.matches[i]
+                attrs = feat.get("attrs", {}) or {}
+                ident = (attrs.get("gene") or feat.get("label","") or attrs.get("Name") or attrs.get("ID") or "").strip()
+            except: pass
+        
         if not ident:
-            return
-        url = SGD_LOCUS + ident
-        webbrowser.open(url)
-        self.sgd_status.config(text="Opened: " + url, foreground="darkgreen")
-
-    def open_sgd_seq(self):
-        """SGD locus 페이지의 Sequence 탭을 바로 연다."""
-        ident = self._get_sgd_identifier()
+            ident = self.q.get().strip()
+            
         if not ident:
+            messagebox.showwarning("Warning", "유전자 이름 또는 검색어를 입력하세요.")
             return
-        url = SGD_LOCUS + ident + "#sequence"
-        webbrowser.open(url)
-        self.sgd_status.config(text="Opened: " + url, foreground="darkgreen")
+            
+        sp = self.sp_c.get()
+        provider = ProviderRegistry.get_by_species(sp)
+        url = provider.get_locus_url(ident) if mode == "locus" else provider.get_sequence_url(ident)
+        
+        if url:
+            webbrowser.open(url)
+            self.db_status.config(text="Opened: " + url, foreground="darkgreen")
+        else:
+            messagebox.showinfo("Info", f"{provider.name}에서는 해당 페이지를 제공하지 않습니다.")
 
     def save_as_template(self):
         if not self.current_extract:
@@ -264,14 +272,11 @@ class GeneLookupTab:
         while name in self.lib.templates:
             name = "{} ({})".format(original, ctr); ctr += 1
         src = self.lib.templates.get(self.current_extract["src_genome"])
-        species = src.species if src else ""
         item = SequenceItem(
             name=name, sequence=self.current_extract["sequence"],
             category="template", topology="Linear", kind="Genome",
-            species=species, features=self.current_extract["features"],
+            species=src.species if src else "", features=self.current_extract["features"],
             template_name=self.current_extract["src_genome"])
         self.lib.templates[name] = item
-        self.lib.save()
-        self.refresh_cb()
-        msg = "'" + name + "' Template으로 저장 완료."
-        messagebox.showinfo("Saved", msg)
+        self.lib.save(); self.refresh_cb()
+        messagebox.showinfo("Saved", f"'{name}' Template으로 저장 완료.")

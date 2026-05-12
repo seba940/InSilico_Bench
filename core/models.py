@@ -79,6 +79,8 @@ class AnnotationRef:
     name: str = ""
     features: List[Dict] = field(default_factory=list)
     source_file: str = ""
+    species: str = "Generic"
+    provider: str = "NCBI"
 
 
 @dataclass
