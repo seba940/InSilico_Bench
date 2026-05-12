@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [1.0.0] - 2026-05-12
 ### Added
-- **SnapGene-style Gene Viewer**: A unified sequence visualization module across all tabs.
+- **SnapGene-style Gene Viewer**: A unified sequence visualization module across all tabs in InSilico_Bench.
 - **PCR Filtering**: Only selected primers are visualized in the PCR execution tab for better clarity.
 - **Interactive Features**: Clicking on a primer or feature now automatically selects the sequence range and displays Tm/GC% information.
 - **Adjustable Layout**: Added a PanedWindow in the Primer Tab to allow resizing between Forward and Reverse tables.

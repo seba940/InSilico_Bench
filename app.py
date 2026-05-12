@@ -12,7 +12,7 @@ from gui.gui_components import ScrollableFrame
 class YeastApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Yeast Lab Simulator - Pro v14")
+        self.root.title("InSilico_Bench - Pro v14")
         self.root.geometry("1400x850")
         self.lib = LibraryManager()
 

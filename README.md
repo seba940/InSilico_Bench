@@ -1,6 +1,6 @@
-# Yeast Lab Simulator (Pro v14)
+# InSilico_Bench (Pro v14)
 
-Yeast Lab Simulator는 효모(Saccharomyces cerevisiae) 실험실에서 수행하는 주요 분자생물학 실험을 디지털로 시뮬레이션하고 관리할 수 있는 전문 도구입니다. 복잡한 PCR 설계, 상동 재조합(HR), 제한효소 처리 과정을 직관적인 UI와 SnapGene 스타일의 서열 뷰어를 통해 미리 확인하고 최적화할 수 있습니다.
+InSilico_Bench는 효모(Saccharomyces cerevisiae) 실험실에서 수행하는 주요 분자생물학 실험을 디지털로 시뮬레이션하고 관리할 수 있는 전문 도구입니다. 복잡한 PCR 설계, 상동 재조합(HR), 제한효소 처리 과정을 직관적인 UI와 SnapGene 스타일의 서열 뷰어를 통해 미리 확인하고 최적화할 수 있습니다.
 
 ## 주요 기능
 
