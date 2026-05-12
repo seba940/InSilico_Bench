@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2026-05-12
+### Added
+- **Multi-species Gene Lookup**: Support for multiple species beyond SGD (Saccharomyces cerevisiae), including Human, Mouse, PomBase, FlyBase, and WormBase.
+- **Provider Registry Pattern**: Architectural foundation for easily adding new genomic databases.
+- **Annotation Metadata**: Added `species` and `provider` fields to Annotation References.
+- **Dynamic UI**: Gene Lookup UI now adapts its database buttons and links based on the selected species.
+- **"No GFF" Mode**: Directly open external databases using gene names even without a local GFF file.
+
 ## [1.0.0] - 2026-05-12
 ### Added
 - **SnapGene-style Gene Viewer**: A unified sequence visualization module across all tabs in InSilico_Bench.
