@@ -835,6 +835,17 @@ class SnapGeneViewer(ttk.Frame):
         self._dragging = True
         cx = self.canvas.canvasx(event.x)
         cy = self.canvas.canvasy(event.y)
+
+        # 1. Check if a feature/primer was clicked
+        for x1, y1, x2, y2, feat in reversed(self._hit_map):
+            if x1 <= cx <= x2 and y1 <= cy <= y2:
+                self._sel_start = feat.get("start", 0)
+                self._sel_end   = feat.get("end", 1) - 1  # 0-based inclusive
+                self._draw_selection()
+                self._dragging = False # Clicked feature, don't start dragging
+                return
+
+        # 2. Otherwise, start normal drag-selection
         pos = self._pos_at(cx, cy)
         if pos >= 0:
             self._sel_start = pos
