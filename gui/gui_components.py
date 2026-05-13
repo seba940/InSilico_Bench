@@ -563,6 +563,8 @@ class SnapGeneViewer(ttk.Frame):
         self.canvas.bind("<ButtonRelease-1>", self._on_release)
         self.canvas.bind("<Control-c>",       self._copy_selection)
         self.canvas.bind("<Control-C>",       self._copy_selection)
+        self.canvas.bind("<Control-f>",       self._on_find)
+        self.canvas.bind("<Control-F>",       self._on_find)
 
     # ── public API ──────────────────────────────────────────────────────
     def render(self, sequence, features):
@@ -579,6 +581,45 @@ class SnapGeneViewer(ttk.Frame):
             font=("TkDefaultFont", 9), fill="#555555",
             width=600)
         self.canvas.configure(scrollregion=self.canvas.bbox("all") or (0,0,200,50))
+
+    def find_pattern(self, pattern):
+        """Search for a pattern and highlight it."""
+        if not self.sequence or not pattern:
+            return
+        
+        # Simple cyclical search
+        start_search = 0
+        if self._sel_start >= 0 and self._sel_end >= 0:
+            start_search = max(self._sel_start, self._sel_end) + 1
+            
+        pos = self.sequence.find(pattern.upper(), start_search)
+        if pos == -1:
+            pos = self.sequence.find(pattern.upper(), 0)
+            
+        if pos != -1:
+            self._sel_start = pos
+            self._sel_end = pos + len(pattern) - 1
+            self._draw_selection()
+            # Ensure the found position is visible
+            self._see_pos(pos)
+
+    def _see_pos(self, pos):
+        """Scroll to make pos visible."""
+        # Find row containing pos
+        for i, (row_s, row_e, y_top, y_bot) in enumerate(self._row_map):
+            if row_s <= pos < row_e:
+                # Calculate relative position (0.0 to 1.0)
+                sr = self.canvas.cget("scrollregion").split()
+                if len(sr) == 4:
+                    total_h = float(sr[3])
+                    if total_h > 0:
+                        self.canvas.yview_moveto(y_top / total_h)
+                break
+
+    # ── internal ────────────────────────────────────────────────────────
+    def _on_find(self, event=None):
+        FindDialog(self, self)
+        return "break"
 
     # ── internal ────────────────────────────────────────────────────────
     def _on_width_change(self):
@@ -899,7 +940,17 @@ class SnapGeneViewer(ttk.Frame):
         self.canvas.unbind_all("<Button-5>")
 
     def _scroll_y(self, event):
-        self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        # Calculate current scroll position
+        v_start, v_end = self.canvas.yview()
+        delta = -1 * (event.delta / 120)
+        
+        # If at boundaries, don't swallow the event; let it propagate to parent
+        if (delta < 0 and v_start <= 0) or (delta > 0 and v_end >= 1.0):
+            # Propagate to parent (e.g. ScrollableFrame)
+            self.master.event_generate("<MouseWheel>", delta=event.delta, x=event.x, y=event.y)
+            return
+            
+        self.canvas.yview_scroll(int(delta), "units")
 
 
 class FindDialog(tk.Toplevel):
@@ -915,6 +966,12 @@ class FindDialog(tk.Toplevel):
     def find_next(self):
         p = self.entry.get().strip().upper()
         if not p: return
+        
+        # Support for SnapGeneViewer
+        if hasattr(self.text_widget, "find_pattern"):
+            self.text_widget.find_pattern(p)
+            return
+
         self.text_widget.tag_remove("search_hit", "1.0", tk.END)
         self.text_widget.tag_remove("sel", "1.0", tk.END)
         pos = self.text_widget.search(p, self.last_pos, nocase=True, stopindex=tk.END)

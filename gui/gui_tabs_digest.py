@@ -133,6 +133,9 @@ class DigestTab:
         items = []
         for k, v in self.lib.templates.items():
             items.append(f"[{v.topology}] {k}")
+        # Amplicon 추가
+        for k, v in self.lib.amplicons.items():
+            items.append(f"[Amplicon:{v.topology}] {k}")
         # 이미 digest 된 것도 다시 자를 수 있게
         for k, v in self.lib.digests.items():
             items.append(f"[Digest:{v.topology}] {k}")
@@ -152,9 +155,9 @@ class DigestTab:
     def _get_source_obj(self):
         s = self.src.get()
         if not s: return None
-        # "[Linear] name" 또는 "[Digest:Linear] name" 형식
+        # "[Linear] name", "[Amplicon:Linear] name" 또는 "[Digest:Linear] name" 형식
         name = s.split("] ", 1)[-1] if "] " in s else s
-        return self.lib.templates.get(name) or self.lib.digests.get(name)
+        return self.lib.templates.get(name) or self.lib.amplicons.get(name) or self.lib.digests.get(name)
 
     # --- Enzyme listbox 관리 ---
     def refresh_enzyme_list(self):

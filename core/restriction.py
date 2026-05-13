@@ -195,18 +195,110 @@ def inherit_features(features, fragment, source_topology, source_len):
     return new_feats
 
 
-def annotate_cut_sites_on_source(sequence, sites):
-    """원본 sequence에 cut site들을 feature로 표시 (시각화용).
-    각 cut을 길이 1짜리 'Misc' 타입 feature로 등록.
+def ligate(fragments, topology="Linear"):
+    """Join multiple fragments in order to produce a ligation product.
+
+    Parameters
+    ----------
+    fragments : list of dict
+        Each item must have keys:
+          "name"         : str
+          "sequence"     : str
+          "features"     : list of feature dicts (may be empty)
+          "start_enzyme" : str  (5-prime end enzyme name, or "Blunt")
+          "end_enzyme"   : str  (3-prime end enzyme name, or "Blunt")
+    topology : "Linear" or "Circular"
+
+    Returns
+    -------
+    dict with keys:
+        "sequence"  : str   -- concatenated sequence
+        "features"  : list  -- offset-adjusted features
+        "topology"  : str
+        "junctions" : list of {"pos": int, "left": str, "right": str, "compatible": bool}
+        "length"    : int
     """
+    if not fragments:
+        return None
+
+    seq       = ""
+    features  = []
+    junctions = []
+    offset    = 0
+
+    for i, frag in enumerate(fragments):
+        fseq   = frag.get("sequence", "")
+        ffeats = frag.get("features", []) or []
+
+        if i > 0:
+            prev      = fragments[i - 1]
+            left_end  = prev.get("end_enzyme", "")
+            right_end = frag.get("start_enzyme", "")
+            junctions.append({
+                "pos":        offset,
+                "left":       left_end  or "?",
+                "right":      right_end or "?",
+                "compatible": _ends_compatible(left_end, right_end),
+            })
+
+        for f in ffeats:
+            nf          = f.copy()
+            nf["start"] = f.get("start", 0) + offset
+            nf["end"]   = f.get("end",   0) + offset
+            features.append(nf)
+
+        seq    += fseq
+        offset += len(fseq)
+
+    if topology == "Circular" and len(fragments) > 1:
+        left_end  = fragments[-1].get("end_enzyme", "")
+        right_end = fragments[0].get("start_enzyme", "")
+        junctions.append({
+            "pos":        0,
+            "left":       left_end  or "?",
+            "right":      right_end or "?",
+            "compatible": _ends_compatible(left_end, right_end),
+        })
+
+    return {
+        "sequence":  seq,
+        "features":  features,
+        "topology":  topology,
+        "junctions": junctions,
+        "length":    len(seq),
+    }
+
+
+def _ends_compatible(left_end, right_end):
+    """Return True if two fragment ends can be ligated together.
+
+    Rules:
+    - Same enzyme name -> compatible (sticky end ligation)
+    - Either end is Blunt or empty -> compatible (blunt-end ligation)
+    - 5'-end / 3'-end (original linear termini) -> incompatible
+    - Multi-enzyme (comma-separated): compatible if any enzyme matches
+    """
+    TERMINAL = {"5'-end", "3'-end"}
+    if left_end in TERMINAL or right_end in TERMINAL:
+        return False
+    blunt = {"", "Blunt", "blunt"}
+    if left_end in blunt or right_end in blunt:
+        return True
+    left_set  = set(e.strip() for e in left_end.split(","))
+    right_set = set(e.strip() for e in right_end.split(","))
+    return bool(left_set & right_set)
+
+
+def annotate_cut_sites_on_source(sequence, sites):
+    """Return cut-site features for visualisation on the source sequence."""
     feats = []
     for s in sites:
         p = s["pos"]
         feats.append({
-            "label": f"{s['enzyme']} cut",
-            "start": p,
-            "end": min(p + 1, len(sequence)),
-            "type": "Misc",
+            "label":  f"{s['enzyme']} cut",
+            "start":  p,
+            "end":    min(p + 1, len(sequence)),
+            "type":   "Misc",
             "strand": 1,
         })
     return feats

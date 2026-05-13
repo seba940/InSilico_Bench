@@ -364,6 +364,7 @@ class PrimerTab:
         
         r0 = ttk.Frame(in_f); r0.pack(fill="x")
         ttk.Label(r0, text="Name:").pack(side="left"); self.pn = ttk.Entry(r0, width=20); self.pn.pack(side="left", padx=5)
+        self.pn.bind("<KeyRelease>", self.on_seq_change)
         
         self.pt_v = tk.StringVar(value="Fwd"); ttk.Radiobutton(r0, text="Fwd", variable=self.pt_v, value="Fwd").pack(side="left")
         ttk.Radiobutton(r0, text="Rev", variable=self.pt_v, value="Rev").pack(side="left", padx=(0, 15))
@@ -383,7 +384,8 @@ class PrimerTab:
         # Binding / Action Buttons
         r2 = ttk.Frame(in_f); r2.pack(fill="x")
         ttk.Label(r2, text="Binding Length:").pack(side="left")
-        self.pbl = ttk.Spinbox(r2, from_=1, to=200, width=5); self.pbl.set(20); self.pbl.pack(side="left", padx=5)
+        self.pbl = ttk.Spinbox(r2, from_=1, to=200, width=5, command=self.on_seq_change); self.pbl.set(20); self.pbl.pack(side="left", padx=5)
+        self.pbl.bind("<KeyRelease>", self.on_seq_change)
         
         ttk.Button(r2, text="Selection Tool", command=self.open_selection_tool).pack(side="left", padx=5)
         
@@ -419,8 +421,28 @@ class PrimerTab:
 
     def on_seq_change(self, event=None):
         self.update_len_display()
+        n = self.pn.get().strip()
+        s = self.pf.get().strip()
+        if n and s:
+            self.btn_save.config(state="normal")
+        else:
+            self.btn_save.config(state="disabled")
         self.validated = False
-        self.btn_save.config(state="disabled")
+
+    def update_len_display(self):
+        s = self.pf.get().strip()
+        self.len_l.config(text=f"{len(s)} bp")
+
+    def del_p(self, t):
+        sel = t.selection()
+        if not sel: return
+        for s in sel:
+            name = t.item(s)['values'][0]
+            d = self.lib.fwd_primers if t == self.fwd_t else self.lib.rev_primers
+            if name in d:
+                del d[name]
+        self.lib.save()
+        self.refresh_cb()
 
     def validate_primer(self):
         seq = self.pf.get().strip().upper()
@@ -494,6 +516,7 @@ class PrimerTab:
                         if not messagebox.askyesno("Warning", "Usually, the binding site is at the very 3' end. Continue?"):
                             return
                     self.pbl.set(selected_len)
+                    self.on_seq_change()  # Update state
                     tw.destroy()
                 else:
                     messagebox.showwarning("No Selection", "Please drag to select a region.")
@@ -520,6 +543,7 @@ class PrimerTab:
             n = self.pn.get().strip()
             s = self.pf.get().strip().upper()
             if not n or not s:
+                messagebox.showwarning("Warning", "Name and Sequence are required.")
                 return
             binding_len = int(float(self.pbl.get()))
             t = self.pt_v.get()
@@ -528,10 +552,18 @@ class PrimerTab:
             (self.lib.fwd_primers if t == "Fwd" else self.lib.rev_primers)[n] = p_obj
             self.lib.save()
             self.refresh_cb()
-            # 저장 후 입력 필드 초기화
+            # 저장 후 입력 필드 초기화 및 상태 리셋
             self.pn.delete(0, tk.END)
             self.pf.delete(0, tk.END)
             self.update_len_display()
+            self.validated = False
+            self.btn_save.config(state="disabled")
+            
+            # 분석 결과 창도 비움
+            self.val_text.config(state="normal")
+            self.val_text.delete("1.0", tk.END)
+            self.val_text.config(state="disabled")
+            
         except Exception as e:
             from tkinter import messagebox
             messagebox.showerror("Save Error", f"Failed to save primer:\n{e}")
@@ -543,7 +575,7 @@ class PrimerTab:
                 if not q or q.upper() in k.upper(): 
                     t.insert("", "end", values=(v.name, v.usage, v.tm, v.tm_total, v.full_sequence, len(v.full_sequence)))
 
-    def start_edit(self, t): self.edit_widgets = UIHelper.setup_inline_edit(t, {"U":["PCR", "RT-PCR"], "S":None}, {"U":1, "S":3}, lambda mid: self.save_edit(t, mid))
+    def start_edit(self, t): self.edit_widgets = UIHelper.setup_inline_edit(t, {"U":["PCR", "RT-PCR"], "S":None}, {"U":1, "S":4}, lambda mid: self.save_edit(t, mid))
     def save_edit(self, t, mid):
         vals = [w.get() for w in self.edit_widgets]; name = t.item(mid)['values'][0]; d = self.lib.fwd_primers if t==self.fwd_t else self.lib.rev_primers
         if name in d: p = d[name]; d[name] = Primer(name, vals[1], p.binding_len, p.p_type, vals[0]); self.lib.save(); self.refresh_cb()
