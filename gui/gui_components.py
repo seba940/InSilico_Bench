@@ -44,7 +44,14 @@ class ScrollableFrame(ttk.Frame):
         self.canvas_window = self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         self.canvas.bind('<Configure>', lambda e: self.canvas.itemconfig(self.canvas_window, width=e.width))
         self.canvas.configure(yscrollcommand=self.scrollbar_v.set, xscrollcommand=self.scrollbar_h.set)
-        self.canvas.bind_all("<MouseWheel>", lambda e: self.canvas.yview_scroll(int(-1*(e.delta/120)), "units"))
+        
+        def _on_mousewheel(event):
+            # Only scroll the main frame if the event wasn't already handled by a sub-widget
+            # or if the sub-widget specifically wants to propagate it.
+            # Tkinter's bind_all is very aggressive.
+            self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+
+        self.canvas.bind_all("<MouseWheel>", _on_mousewheel)
         self.canvas.pack(side="left", fill="both", expand=True)
         self.scrollbar_v.pack(side="right", fill="y")
         self.scrollbar_h.pack(side="bottom", fill="x")
@@ -940,17 +947,29 @@ class SnapGeneViewer(ttk.Frame):
         self.canvas.unbind_all("<Button-5>")
 
     def _scroll_y(self, event):
-        # Calculate current scroll position
-        v_start, v_end = self.canvas.yview()
-        delta = -1 * (event.delta / 120)
-        
-        # If at boundaries, don't swallow the event; let it propagate to parent
-        if (delta < 0 and v_start <= 0) or (delta > 0 and v_end >= 1.0):
-            # Propagate to parent (e.g. ScrollableFrame)
-            self.master.event_generate("<MouseWheel>", delta=event.delta, x=event.x, y=event.y)
+        # Prevent re-entry
+        if getattr(self, '_scrolling', False):
             return
+        self._scrolling = True
+        try:
+            # Calculate current scroll position
+            v_start, v_end = self.canvas.yview()
+            delta = -1 * (event.delta / 120)
             
-        self.canvas.yview_scroll(int(delta), "units")
+            # If at boundaries, try to scroll the parent ScrollableFrame
+            if (delta < 0 and v_start <= 0) or (delta > 0 and v_end >= 1.0):
+                # Look for the parent ScrollableFrame
+                p = self.master
+                while p:
+                    if isinstance(p, ScrollableFrame):
+                        p.canvas.yview_scroll(int(delta), "units")
+                        break
+                    p = p.master
+                return
+                
+            self.canvas.yview_scroll(int(delta), "units")
+        finally:
+            self._scrolling = False
 
 
 class FindDialog(tk.Toplevel):
