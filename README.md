@@ -4,6 +4,18 @@ InSilico_Bench는 효모(Saccharomyces cerevisiae) 실험실에서 수행하는 
 
 ## 최근 업데이트
 
+### [v1.2.0] - 2026-05-13
+*   **HR Primer Auto-Design 탭 신규 추가**: 타겟 유전자와 마커를 선택하면 HR용 chimeric primer(상동 암 + 마커 결합 서열)를 자동 설계합니다. 유전자 삭제, C-말단 태깅, N-말단 태깅 3가지 모드 지원.
+*   **Batch PCR 탭 신규 추가**: 여러 (주형, Fwd, Rev) 조합을 한 번에 시뮬레이션하고 결과를 테이블로 확인, 전체 Amplicon을 일괄 저장할 수 있습니다.
+*   **Undo 기능 추가**: `Ctrl+Z`로 마지막 라이브러리 변경(저장, 삭제 등)을 최대 20단계까지 취소할 수 있습니다.
+*   **데이터 자동 백업**: 저장 시마다 `data.json.bak` 파일을 자동 생성하여 데이터 손실을 방지합니다.
+*   **PCR 폴리머라제 선택**: Taq, Q5, Phusion, KOD, Pfu 중 선택하면 각 효소의 속도에 맞춰 신장 시간(Extension Time)을 자동 계산합니다.
+*   **Degenerate Base 프라이머 지원**: 프라이머 서열에 IUPAC 축약 염기(N, R, Y, S, W, K, M 등)가 포함되어 있어도 정상적으로 결합 위치를 탐색합니다.
+*   **HR Simulation 정확도 향상**: Homology arm 탐색에 Hamming distance 기반 mismatch 허용 로직을 추가(기본 2bp)하여 실제 HR 조건을 보다 정확하게 반영합니다.
+*   **Colony PCR 검증**: HR Simulation 탭에서 Check Primer를 선택하면 HR 결과 서열 기준 예상 밴드 크기를 즉시 계산합니다.
+*   **서열 Export 기능**: Library의 Amplicon, HR Result, Digest Product 등을 FASTA 또는 CSV 파일로 내보낼 수 있습니다.
+*   **버그 수정**: Ctrl+F 단축키 동작 오류, 라이브러리 항목 삭제 후 뷰어 충돌, HR 결과 저장 시 이름 중복 처리 등 다수 수정.
+
 ### [v1.1.0] - 2026-05-12
 *   **다중 생물종 지원**: 효모(SGD) 외에 인간, 마우스, 초파리 등 다양한 종의 유전자 검색 지원.
 *   **프로바이더 시스템**: 종에 맞는 외부 데이터베이스(NCBI, PomBase 등) 자동 연결.
