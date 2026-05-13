@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, scrolledtext
+import csv, os
 from core.models import Species, AnnotationRef, SequenceItem
 from gui.gui_components import UIHelper, FeatureEditor, SearchableCombobox, SnapGeneViewer
 from core.utils import parse_annotation_file, get_primer_analysis
@@ -270,20 +271,24 @@ class SeqViewTab:
         self.ae_t = SearchableCombobox(bf); self.ae_t.pack(side="left", padx=5)
         ttk.Button(bf, text="Update Info", command=self.upd).pack(side="left")
 
+        # Export buttons
+        exp_f = ttk.Frame(f); exp_f.pack(fill="x", pady=2)
+        ttk.Button(exp_f, text="Export FASTA", command=self.export_fasta).pack(side="left", padx=2)
+        ttk.Button(exp_f, text="Export CSV", command=self.export_csv).pack(side="left", padx=2)
+
         self.search = UIHelper.add_search_bar(f, self.filter, lambda: self.remove_dups())
         if self.cat == "amplicon":
             cols, headings = ("N", "L", "Tmp", "M", "T"), ("Name", "Len", "Template", "Marker", "Tag")
         elif self.cat == "digest":
             cols, headings = ("N", "L", "Src", "Enz"), ("Name", "Len", "Source", "Enzymes")
-        else:  # recombinant 등
+        else:
             cols, headings = ("N", "L", "M", "T"), ("Name", "Len", "Marker", "Tag")
         fr_t, self.tree = UIHelper.create_scrolled_tree(f, cols, headings, lib=self.lib, table_id=f"seq_view_{self.cat}")
         fr_t.pack(fill="x"); self.tree.bind("<<TreeviewSelect>>", lambda e: self.on_sel())
-        
-        # Replace Text with SnapGeneViewer
+
         self.det = SnapGeneViewer(f, lib_manager=self.lib)
         self.det.pack(fill="both", expand=True, pady=5)
-        
+
         self.feat_ed = FeatureEditor(f, "Features", text_widget=self.det); self.feat_ed.pack(fill="x")
         UIHelper.create_legend(f).pack(side="bottom", fill="x", pady=5)
         ttk.Button(f, text="Delete Selected", command=self.del_s).pack(side="right")
@@ -308,8 +313,52 @@ class SeqViewTab:
                 self.lib.save(); self.refresh_cb()
 
     def del_s(self):
-        for s in self.tree.selection(): del self.data[self.tree.item(s)['values'][0]]
-        self.lib.save(); self.refresh_cb(); self.det.delete("1.0", tk.END)
+        for s in self.tree.selection():
+            del self.data[self.tree.item(s)['values'][0]]
+        self.lib.save()
+        self.refresh_cb()
+        self.det.show_message("")
+
+    def export_fasta(self):
+        path = filedialog.asksaveasfilename(
+            defaultextension=".fasta",
+            filetypes=[("FASTA", "*.fasta *.fa"), ("All", "*.*")],
+            title="Export as FASTA")
+        if not path:
+            return
+        sel = self.tree.selection()
+        items = ([self.data[self.tree.item(s)['values'][0]] for s in sel]
+                 if sel else list(self.data.values()))
+        with open(path, 'w', encoding='utf-8') as fh:
+            for item in items:
+                fh.write(f">{item.name}\n")
+                seq = item.sequence
+                for i in range(0, len(seq), 60):
+                    fh.write(seq[i:i+60] + "\n")
+        messagebox.showinfo("Export", f"{len(items)}개 서열을 저장했습니다.\n{path}")
+
+    def export_csv(self):
+        path = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV", "*.csv"), ("All", "*.*")],
+            title="Export as CSV")
+        if not path:
+            return
+        sel = self.tree.selection()
+        items = ([self.data[self.tree.item(s)['values'][0]] for s in sel]
+                 if sel else list(self.data.values()))
+        with open(path, 'w', newline='', encoding='utf-8-sig') as fh:
+            writer = csv.writer(fh)
+            writer.writerow(["Name", "Length", "Topology", "Marker", "Tag", "Template", "Sequence"])
+            for item in items:
+                writer.writerow([
+                    item.name, len(item.sequence),
+                    getattr(item, 'topology', ''),
+                    getattr(item, 'marker', ''),
+                    getattr(item, 'tag', ''),
+                    getattr(item, 'template_name', ''),
+                    item.sequence])
+        messagebox.showinfo("Export", f"{len(items)}개 서열을 저장했습니다.\n{path}")
 
     def filter(self, q):
         self.tree.delete(*self.tree.get_children())

@@ -1,37 +1,85 @@
 from Bio.Seq import Seq
 from Bio import SeqIO
 import os
+import re
 import urllib.parse
+
+# IUPAC degenerate base regex mapping
+_IUPAC_REGEX = {
+    'R': '[AG]', 'Y': '[CT]', 'S': '[GC]', 'W': '[AT]',
+    'K': '[GT]', 'M': '[AC]', 'B': '[CGT]', 'D': '[AGT]',
+    'H': '[ACT]', 'V': '[ACG]', 'N': '[ACGT]',
+}
+_VALID_DNA = set('ACGTNRYSWKMBDHV')
+
+# Extension time in seconds per 1000 bp
+POLYMERASE_RATES = {
+    "Taq":     60,
+    "Q5":      30,
+    "Phusion": 30,
+    "KOD":     20,
+    "Pfu":     120,
+}
+
+
+def validate_dna_sequence(seq):
+    """Return list of invalid characters. Empty list means valid."""
+    return [c for c in seq.upper() if c not in _VALID_DNA]
 
 
 def get_rc(sequence):
     return str(Seq(sequence).reverse_complement())
 
 
+def _iupac_to_regex(seq):
+    pattern = ''
+    for c in seq.upper():
+        if c in _IUPAC_REGEX:
+            pattern += _IUPAC_REGEX[c]
+        else:
+            pattern += re.escape(c)
+    return pattern
+
+
+def _has_degen(seq):
+    return any(c in 'RYSWKMBDHVN' for c in seq.upper())
+
+
 def smart_find_binding(template, primer_binding, p_type="Fwd", topology="Linear"):
     temp_fwd = template.upper()
     pb = primer_binding.upper()
+    degen = _has_degen(pb)
+
     if p_type == "Fwd":
         search_temp = temp_fwd + temp_fwd[:len(pb)] if topology == "Circular" else temp_fwd
         for length in range(len(pb), 9, -1):
             sub = pb[-length:]
-            idx = search_temp.find(sub)
-            if idx != -1:
-                return (idx % len(temp_fwd)), length
+            if degen:
+                m = re.search(_iupac_to_regex(sub), search_temp)
+                if m:
+                    return (m.start() % len(temp_fwd)), length
+            else:
+                idx = search_temp.find(sub)
+                if idx != -1:
+                    return (idx % len(temp_fwd)), length
     else:
         temp_rc = get_rc(temp_fwd)
         orig_len = len(temp_fwd)
         search_temp = temp_rc + temp_rc[:len(pb)] if topology == "Circular" else temp_rc
         for length in range(len(pb), 9, -1):
             sub = pb[-length:]
-            idx_rc = search_temp.find(sub)
-            if idx_rc != -1:
-                # Reverse RC index back to Forward index
-                # RC index i corresponds to Forward index (orig_len - 1 - i)
-                # But here we search in temp_rc + wrapped part.
-                actual_idx_rc = idx_rc % orig_len
-                idx_fwd = (orig_len - actual_idx_rc - length) % orig_len
-                return idx_fwd, length
+            if degen:
+                m = re.search(_iupac_to_regex(sub), search_temp)
+                if m:
+                    actual_idx_rc = m.start() % orig_len
+                    idx_fwd = (orig_len - actual_idx_rc - length) % orig_len
+                    return idx_fwd, length
+            else:
+                idx_rc = search_temp.find(sub)
+                if idx_rc != -1:
+                    actual_idx_rc = idx_rc % orig_len
+                    idx_fwd = (orig_len - actual_idx_rc - length) % orig_len
+                    return idx_fwd, length
     return -1, 0
 
 
@@ -119,8 +167,9 @@ def auto_annotate(sequence, global_features_dict):
     return found_features
 
 
-def calculate_extension_time(bp_length):
-    return int((bp_length / 1000) * 60)
+def calculate_extension_time(bp_length, polymerase="Taq"):
+    rate = POLYMERASE_RATES.get(polymerase, 60)
+    return int((bp_length / 1000) * rate)
 
 
 def adjust_features(features, offset, start_idx, end_idx, topology="Linear", template_len=0):
@@ -156,11 +205,39 @@ def adjust_features(features, offset, start_idx, end_idx, topology="Linear", tem
     return res
 
 
+def _hamming_find(text, pattern, max_mm=2):
+    """Find first occurrence of pattern in text with at most max_mm mismatches.
+    Returns start index or -1."""
+    pl = len(pattern)
+    if pl > len(text):
+        return -1
+    for i in range(len(text) - pl + 1):
+        mm = sum(a != b for a, b in zip(text[i:i + pl], pattern))
+        if mm <= max_mm:
+            return i
+    return -1
+
+
+def _hamming_rfind(text, pattern, max_mm=2):
+    """Find last occurrence of pattern in text with at most max_mm mismatches.
+    Returns start index or -1."""
+    pl = len(pattern)
+    if pl > len(text):
+        return -1
+    result = -1
+    for i in range(len(text) - pl + 1):
+        mm = sum(a != b for a, b in zip(text[i:i + pl], pattern))
+        if mm <= max_mm:
+            result = i
+    return result
+
+
 def simulate_hr_logic_with_features(target_obj, amplicon_obj,
-                                     max_end_skip=60, max_arm=600, min_arm=15):
+                                     max_end_skip=60, max_arm=600, min_arm=15,
+                                     max_mismatches=2):
     """Insert를 target에 HR로 통합.
-    - 양쪽 말단에서 max_end_skip bp까지는 비-homology(예: RE overhang, 벡터 잔여)일 수 있음
-      → 그 부분은 통합 시 제외 (실제 HR에서 chew-back으로 사라지는 영역에 해당).
+    - 양쪽 말단에서 max_end_skip bp까지는 비-homology 영역 허용.
+    - max_mismatches: homology arm에서 허용하는 최대 미스매치 수 (기본 2bp).
     - homology arm 길이는 max_arm 부터 min_arm 까지 시도하며 가장 긴 매칭 우선.
     """
     t_seq, a_seq = target_obj.sequence, amplicon_obj.sequence
@@ -178,6 +255,8 @@ def simulate_hr_logic_with_features(target_obj, amplicon_obj,
                 continue
             arm = a_seq[offset:offset + l]
             idx = t_seq.find(arm)
+            if idx == -1 and max_mismatches > 0:
+                idx = _hamming_find(t_seq, arm, max_mismatches)
             if idx != -1:
                 li, al, lo = idx, l, offset
                 break
@@ -193,10 +272,12 @@ def simulate_hr_logic_with_features(target_obj, amplicon_obj,
             if offset + l > a_len:
                 continue
             start_in_a = a_len - offset - l
-            if start_in_a < lo + al:  # left arm과 insert 내에서 겹치지 않게
+            if start_in_a < lo + al:
                 continue
             arm = a_seq[start_in_a:a_len - offset]
             idx = t_seq.rfind(arm)
+            if idx == -1 and max_mismatches > 0:
+                idx = _hamming_rfind(t_seq, arm, max_mismatches)
             if idx != -1 and idx >= li + al:
                 ri, ar, ro = idx, l, offset
                 break

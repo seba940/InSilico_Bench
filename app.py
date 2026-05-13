@@ -3,10 +3,11 @@ from tkinter import ttk
 from core.manager import LibraryManager
 from gui.tabs.gui_tabs_lib import PrimerTab, TemplateTab, MarkerTab, TagTab
 from gui.tabs.gui_tabs_tools import SpeciesTab, AnnotationRefTab, SeqViewTab, PrimerValidationTab
-from gui.tabs.gui_tabs_sim import PCRTab, HRTab
+from gui.tabs.gui_tabs_sim import PCRTab, HRTab, BatchPCRTab
 from gui.tabs.gui_tabs_digest import DigestTab
 from gui.tabs.gui_tabs_ligation import LigationTab
 from gui.tabs.gui_tabs_genelookup import GeneLookupTab
+from gui.tabs.gui_tabs_hrdesign import HRDesignTab
 from gui.gui_components import ScrollableFrame
 
 
@@ -66,33 +67,40 @@ class YeastApp:
 
         # --- Simulation / tool tabs ---
         self.f_pcr     = ttk.Frame(self.main_nb)
+        self.f_bpcr    = ttk.Frame(self.main_nb)
         self.f_hr      = ttk.Frame(self.main_nb)
         self.f_dig     = ttk.Frame(self.main_nb)
         self.f_lig_tab = ttk.Frame(self.main_nb)
         self.f_val     = ttk.Frame(self.main_nb)
         self.f_gl      = ttk.Frame(self.main_nb)
+        self.f_hrd     = ttk.Frame(self.main_nb)
 
         self.main_nb.add(self.f_pcr,     text=" \U0001f9ec PCR Execution ")
+        self.main_nb.add(self.f_bpcr,    text=" \U0001f4cb Batch PCR ")
         self.main_nb.add(self.f_hr,      text=" \U0001f504 HR Simulation ")
+        self.main_nb.add(self.f_hrd,     text=" \U0001f9ec HR Primer Design ")
         self.main_nb.add(self.f_dig,     text=" ✂️ Restriction Digest ")
         self.main_nb.add(self.f_lig_tab, text=" \U0001f517 Ligation ")
         self.main_nb.add(self.f_val,     text=" ✅ Primer Validation ")
         self.main_nb.add(self.f_gl,      text=" \U0001f9ec Gene Lookup ")
 
-        self.pcr_tab = PCRTab(self.f_pcr, self.lib, self.refresh_all)
-        self.hr_tab  = HRTab(self.f_hr,   self.lib, self.refresh_all)
-        self.dig_tab = DigestTab(self.f_dig, self.lib, self.refresh_all)
-        self.lig_tab = LigationTab(self.f_lig_tab, self.lib, self.refresh_all)
-        self.val_tab = PrimerValidationTab(self.f_val, self.lib, self.refresh_all)
-        self.gl_tab  = GeneLookupTab(self.f_gl,  self.lib, self.refresh_all)
+        self.pcr_tab  = PCRTab(self.f_pcr,  self.lib, self.refresh_all)
+        self.bpcr_tab = BatchPCRTab(self.f_bpcr, self.lib, self.refresh_all)
+        self.hr_tab   = HRTab(self.f_hr,    self.lib, self.refresh_all)
+        self.hrd_tab  = HRDesignTab(self.f_hrd, self.lib, self.refresh_all)
+        self.dig_tab  = DigestTab(self.f_dig, self.lib, self.refresh_all)
+        self.lig_tab  = LigationTab(self.f_lig_tab, self.lib, self.refresh_all)
+        self.val_tab  = PrimerValidationTab(self.f_val, self.lib, self.refresh_all)
+        self.gl_tab   = GeneLookupTab(self.f_gl,  self.lib, self.refresh_all)
 
         self.main_nb.bind("<<NotebookTabChanged>>", lambda e: self.refresh_all())
         self.root.bind("<Control-f>", self.show_find_dialog)
         self.root.bind("<Control-F>", self.show_find_dialog)
+        self.root.bind("<Control-z>", self.undo)
+        self.root.bind("<Control-Z>", self.undo)
         self.refresh_all()
 
     def show_find_dialog(self, event=None):
-        from gui_components import FindDialog
         curr = self.main_nb.index("current")
         txt, f_ed = None, None
         if curr == 0:
@@ -109,7 +117,17 @@ class YeastApp:
         elif curr == 5: txt = self.val_tab.res_text
         elif curr == 6: txt = self.gl_tab.det
         if txt:
+            from gui.gui_components import FindDialog
             FindDialog(self.root, txt, feature_editor=f_ed)
+
+    def undo(self, event=None):
+        if self.lib.undo():
+            self.refresh_all()
+            from tkinter import messagebox
+            messagebox.showinfo("Undo", "마지막 라이브러리 변경이 취소되었습니다.")
+        else:
+            from tkinter import messagebox
+            messagebox.showinfo("Undo", "더 이상 되돌릴 수 없습니다.")
 
     def refresh_all(self):
         self.p_tab.filter_p(self.p_tab.search.get())
@@ -155,8 +173,16 @@ class YeastApp:
 
         self.pcr_tab.fwd['values'] = sorted(list(self.lib.fwd_primers.keys()))
         self.pcr_tab.rev['values'] = sorted(list(self.lib.rev_primers.keys()))
+        self.bpcr_tab.refresh_combos()
+
+        # HR colony PCR primer lists
+        hr_fwd = sorted(list(self.lib.fwd_primers.keys()))
+        hr_rev = sorted(list(self.lib.rev_primers.keys()))
+        self.hr_tab.col_fwd['values'] = hr_fwd
+        self.hr_tab.col_rev['values'] = hr_rev
 
         # source combos
         self.dig_tab.refresh_sources()
         self.lig_tab.refresh_sources()
         self.gl_tab.refresh_sources()
+        self.hrd_tab.refresh_sources()

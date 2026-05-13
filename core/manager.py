@@ -1,6 +1,8 @@
 import json
 import os
+import shutil
 import traceback
+import copy
 from core.models import Primer, SequenceItem, Marker, EpitopeTag, Species, AnnotationRef, GlobalFeature
 
 class LibraryManager:
@@ -8,15 +10,47 @@ class LibraryManager:
         self.filename = filename
         self.fwd_primers, self.rev_primers = {}, {}
         self.templates, self.amplicons, self.recombinants = {}, {}, {}
-        self.digests   = {}  # restriction digest results
-        self.ligations = {}  # ligation results
+        self.digests   = {}
+        self.ligations = {}
         self.markers, self.tags = {}, {}
         self.species, self.ann_refs = {}, {}
         self.global_features = {}
         self.settings = {}
+        self._undo_stack = []
         self.load()
 
+    def _snapshot(self):
+        return {
+            "fwd_primers": copy.deepcopy(self.fwd_primers),
+            "rev_primers": copy.deepcopy(self.rev_primers),
+            "templates": copy.deepcopy(self.templates),
+            "amplicons": copy.deepcopy(self.amplicons),
+            "recombinants": copy.deepcopy(self.recombinants),
+            "digests": copy.deepcopy(self.digests),
+            "ligations": copy.deepcopy(self.ligations),
+            "markers": copy.deepcopy(self.markers),
+            "tags": copy.deepcopy(self.tags),
+            "species": copy.deepcopy(self.species),
+            "ann_refs": copy.deepcopy(self.ann_refs),
+        }
+
+    def push_undo(self):
+        self._undo_stack.append(self._snapshot())
+        if len(self._undo_stack) > 20:
+            self._undo_stack.pop(0)
+
+    def undo(self):
+        if not self._undo_stack:
+            return False
+        state = self._undo_stack.pop()
+        for k, v in state.items():
+            setattr(self, k, v)
+        self.save()
+        return True
+
     def save(self):
+        if os.path.exists(self.filename):
+            shutil.copy2(self.filename, self.filename + '.bak')
         data = {
             "species": [v.__dict__ for v in self.species.values()],
             "ann_refs": [v.__dict__ for v in self.ann_refs.values()],
