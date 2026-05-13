@@ -1,12 +1,12 @@
 import tkinter as tk
 from tkinter import ttk
 from core.manager import LibraryManager
-from gui.gui_tabs_lib import PrimerTab, TemplateTab, MarkerTab, TagTab
-from gui.gui_tabs_tools import SpeciesTab, AnnotationRefTab, SeqViewTab, PrimerValidationTab
-from gui.gui_tabs_sim import PCRTab, HRTab
-from gui.gui_tabs_digest import DigestTab
-from gui.gui_tabs_ligation import LigationTab
-from gui.gui_tabs_genelookup import GeneLookupTab
+from gui.tabs.gui_tabs_lib import PrimerTab, TemplateTab, MarkerTab, TagTab
+from gui.tabs.gui_tabs_tools import SpeciesTab, AnnotationRefTab, SeqViewTab, PrimerValidationTab
+from gui.tabs.gui_tabs_sim import PCRTab, HRTab
+from gui.tabs.gui_tabs_digest import DigestTab
+from gui.tabs.gui_tabs_ligation import LigationTab
+from gui.tabs.gui_tabs_genelookup import GeneLookupTab
 from gui.gui_components import ScrollableFrame
 
 
