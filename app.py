@@ -8,6 +8,7 @@ from gui.tabs.gui_tabs_digest import DigestTab
 from gui.tabs.gui_tabs_ligation import LigationTab
 from gui.tabs.gui_tabs_genelookup import GeneLookupTab
 from gui.tabs.gui_tabs_hrdesign import HRDesignTab
+from gui.tabs.gui_tabs_primerdesign import PrimerDesignTab
 from gui.gui_components import ScrollableFrame
 
 
@@ -74,11 +75,13 @@ class YeastApp:
         self.f_val     = ttk.Frame(self.main_nb)
         self.f_gl      = ttk.Frame(self.main_nb)
         self.f_hrd     = ttk.Frame(self.main_nb)
+        self.f_apd     = ttk.Frame(self.main_nb)
 
         self.main_nb.add(self.f_pcr,     text=" \U0001f9ec PCR Execution ")
         self.main_nb.add(self.f_bpcr,    text=" \U0001f4cb Batch PCR ")
         self.main_nb.add(self.f_hr,      text=" \U0001f504 HR Simulation ")
         self.main_nb.add(self.f_hrd,     text=" \U0001f9ec HR Primer Design ")
+        self.main_nb.add(self.f_apd,     text=" \U0001f3af Auto Primer Design ")
         self.main_nb.add(self.f_dig,     text=" ✂️ Restriction Digest ")
         self.main_nb.add(self.f_lig_tab, text=" \U0001f517 Ligation ")
         self.main_nb.add(self.f_val,     text=" ✅ Primer Validation ")
@@ -88,6 +91,7 @@ class YeastApp:
         self.bpcr_tab = BatchPCRTab(self.f_bpcr, self.lib, self.refresh_all)
         self.hr_tab   = HRTab(self.f_hr,    self.lib, self.refresh_all)
         self.hrd_tab  = HRDesignTab(self.f_hrd, self.lib, self.refresh_all)
+        self.apd_tab  = PrimerDesignTab(self.f_apd, self.lib, self.refresh_all)
         self.dig_tab  = DigestTab(self.f_dig, self.lib, self.refresh_all)
         self.lig_tab  = LigationTab(self.f_lig_tab, self.lib, self.refresh_all)
         self.val_tab  = PrimerValidationTab(self.f_val, self.lib, self.refresh_all)
@@ -111,11 +115,13 @@ class YeastApp:
             elif sub == 4: txt, f_ed = self.d_tab.det,      self.d_tab.feat_ed
             elif sub == 6: txt, f_ed = self.m_tab.ms,       self.m_tab.feat_ed
             elif sub == 7: txt, f_ed = self.tag_tab.ts,     self.tag_tab.feat_ed
+        # Tab order: 0=Library, 1=PCR, 2=BatchPCR, 3=HR, 4=HRDesign, 5=AutoPrimerDesign,
+        #            6=Digest, 7=Ligation, 8=Validation, 9=GeneLookup
         elif curr == 1: txt = self.pcr_tab.res
-        elif curr == 2: txt = self.hr_tab.res
-        elif curr == 3: txt = self.dig_tab.det
-        elif curr == 5: txt = self.val_tab.res_text
-        elif curr == 6: txt = self.gl_tab.det
+        elif curr == 3: txt = self.hr_tab.res
+        elif curr == 6: txt = self.dig_tab.det
+        elif curr == 8: txt = self.val_tab.res_text
+        elif curr == 9: txt = self.gl_tab.det
         if txt:
             from gui.gui_components import FindDialog
             FindDialog(self.root, txt, feature_editor=f_ed)
@@ -186,3 +192,4 @@ class YeastApp:
         self.lig_tab.refresh_sources()
         self.gl_tab.refresh_sources()
         self.hrd_tab.refresh_sources()
+        self.apd_tab.refresh_sources()
